@@ -1,11 +1,9 @@
-import json
 import logging
 import re
-import requests
-from lxml import etree
 
 from flask import Flask, request, jsonify
 from waitress import serve
+from get_info import GetBookInfo
 
 logging.getLogger().setLevel(logging.INFO)
 # logging.basicConfig(
@@ -19,38 +17,20 @@ logging.getLogger().setLevel(logging.INFO)
 app = Flask(__name__)
 
 # 查询/取消订阅 API
-@app.route('/info/<walker_id>', methods=['get'])
-def send_info(walker_id):
-    if len(walker_id.split('-')) != 5:
-        resu = {'code': 400, 'message': 'ID 格式错误'}
-        return jsonify(resu), 400
-    url = f'https://bookwalker.jp/{walker_id}/'
-    result = requests.get(url=url, timeout=10)
-    html = etree.HTML(result.text, parser = etree.HTMLParser(encoding='utf-8'))
-    try:
-        _data = html.xpath('/html/head/script[@type="application/ld+json"][1]/text()')[0].replace('\u3000', ' ')
-        _dataa = ''.join(html.xpath('/html/body/script[7]/text()')[0].split())
-        _dataa = re.findall(r'window.bwDataLayer.push\((.*)\);', _dataa)[0]
-        data = json.loads(_data)
-        dataa = json.loads(_dataa)['ecommerce']['items'][0]
-    except:
-        resu = {'code': 404, 'message': f'ID {walker_id} 获取数据失败'}
+@app.route('/info/<in_data>', methods=['get'])
+def send_info(in_data):
+    if len(in_data.split('-')) == 5:
+        data = GetBookInfo().get_walker(in_data)
+    elif len(in_data) == 10:
+        data = GetBookInfo().get_amazon(in_data)
+    elif len(in_data) == 12:
+        data = GetBookInfo().get_google(in_data)
+    else:
+        data = None
+    if data is None:
+        resu = {'code': 404, 'message': f'{in_data} 获取数据失败'}
         return jsonify(resu), 404
-    resu = {
-        "code": 200,
-        "walker_id": dataa['item_id'],
-        "data": {
-            "name": data['name'],
-            "author": dataa['item_author'].split('\t'),
-            "image": data['image'],
-            "description": data['description'],
-            "brand": dataa['item_brand'],
-            "category": dataa['item_category'],
-            "publisher": dataa['item_publisher'],
-            "series": dataa['item_series'],
-            "date": dataa['item_date'],
-            }
-    }
+    resu = {'code': 200, 'data': data.__dict__}
     return jsonify(resu), 200
 
 
